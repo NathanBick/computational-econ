@@ -1,0 +1,6 @@
+transformers
+torch
+torchvision
+einops
+flash_attn
+triton
