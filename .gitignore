@@ -2,6 +2,7 @@ lib/
 lib64/
 bin/
 mpt-1b-redpajama-200b-dolly/
+mpt-1b-redpajama-200b-dolly_triton/
 share/
 cud*.deb*
 pyenv.cfg
