@@ -1,6 +1,6 @@
 lib/
 lib64/
-bin/
+#bin/
 mpt-1b-redpajama-200b-dolly/
 mpt-1b-redpajama-200b-dolly_triton/
 share/
