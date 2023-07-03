@@ -7,7 +7,7 @@ data <- read.csv("simulation_data.csv", header = TRUE)
 
 # make the data long on money, happiness
 data_long <- data %>%
-    tidyr::gather(key = "variable", value = "value", hours,money, happiness)
+    tidyr::gather(key = "variable", value = "value", hours, free, work, money, happiness)
 
 # calculate the total amount of money, time, and happiness for each type in each step
 data_long_totals <- data_long %>%
@@ -51,6 +51,20 @@ p_tot <- data_long_totals %>%
 
 # open p in a new window
 ggsave("plots/plot_tot.png", p_tot, width = 10, height = 10, units = "in", dpi = 300)
+
+# focus on hours now
+# plot free, work, hours for each type in each step
+time <- data_long %>%
+    filter(variable %in% c("hours","free","work")) %>%
+    ggplot(aes(x = step, y = value, color = variable)) +
+    geom_line() +
+    facet_grid(type ~ ., scales = "free_y") +
+    theme_bw() +
+    theme(legend.position = "bottom") +
+    labs(x = "Step", y = "Hours")
+
+# save
+ggsave("plots/plot_hours.png", time, width = 10, height = 10, units = "in", dpi = 300)
 
 # get distribution of money and happiness at the beginning of the simulation
 data %>%

@@ -7,10 +7,11 @@ import pandas as pd
 
 num_nodes = 100
 num_iterations = 100
+num_trades = 0
 
 #### NOTES to self
-# currently, there is an early drop in money - where does this come from?
-# need to look more closely at the trade function
+# no trades are happening, but the money is changing. I would expect an increase due to the production, but there is a drop
+# why arent trades happening?
 
 # create a graph
 G = nx.DiGraph()
@@ -58,12 +59,17 @@ for i in range(num_nodes):
                     G.add_edge(j,i)
 
 # now we assign the attributes to the nodes
-# this includes a uniform allocation of 8 hours to each node, and a random amount of money, determined by type
+# this includes a uniform allocation of 16 hours to each node, and a random amount of money, determined by type
+# there is work hours, and free hours. Free + work = 16. 
 # for red, the money N(1000, 100)
 # for blue, the money is N(500, 100) 
 # for white, the money is N(100, 10)
 for i in range(num_nodes):
-    G.nodes[i]['hours'] = 8
+    # time allocation
+    G.nodes[i]['hours'] = 16
+    G.nodes[i]['free'] = 8
+    G.nodes[i]['work'] = G.nodes[i]['hours'] - G.nodes[i]['free']
+    # money allocation
     if G.nodes[i]['type'] == 'red':
         G.nodes[i]['money'] = np.random.normal(1000, 10)
     elif G.nodes[i]['type'] == 'blue':
@@ -89,11 +95,11 @@ for i in range(num_nodes):
 # now we define the production and utility functions
 # for now we do not include the neighbors' information in the calculation
 def production(node):
-    return G.nodes[node]['beta1'] * G.nodes[node]['hours'] + G.nodes[node]['beta2'] * G.nodes[node]['money'] + G.nodes[node]['beta0']
+    return G.nodes[node]['beta1'] * G.nodes[node]['work'] + G.nodes[node]['beta2'] * G.nodes[node]['money'] + G.nodes[node]['beta0']
     #return G.nodes[node]['beta1'] * G.nodes[node]['hours'] + G.nodes[node]['beta2'] * G.nodes[node]['money'] + G.nodes[node]['beta3'] * sum([G.nodes[i]['money'] for i in G.neighbors(node)]) + G.nodes[node]['beta0']
 
 def utility(node):
-    return G.nodes[node]['alpha1'] * G.nodes[node]['hours'] + G.nodes[node]['alpha2'] * G.nodes[node]['money'] + G.nodes[node]['alpha0']
+    return G.nodes[node]['alpha1'] * G.nodes[node]['free'] + G.nodes[node]['alpha2'] * G.nodes[node]['money'] + G.nodes[node]['alpha0']
     #return G.nodes[node]['alpha1'] * G.nodes[node]['hours'] + G.nodes[node]['alpha2'] * G.nodes[node]['money'] + G.nodes[node]['alpha3'] * sum([G.nodes[i]['money'] for i in G.neighbors(node)]) + G.nodes[node]['alpha0']
 
 # now we define the update function across the nodes
@@ -107,55 +113,105 @@ def update():
 # the max of hours is 16
 # for each combo of ndoes, check if a trade will make both nodes better off - if so, do it
 # price is the price of 1 hour of time in terms of money
-def trade(node1, node2, price):
+def trade(node1, node2, price,num_trades):
     # check utility of node1 and node2 before trade
-    utility1 = utility(node1)
-    utility2 = utility(node2)
+    node1_utility_before_trade = utility(node1)
+    node2_utility_before_trade = utility(node2)
 
-    # attempt to trade in each direction
-    # if the trade makes both nodes better off, do it
-    # node 1 sells time to node 2
-    if G.nodes[node1]['hours'] > 0 and G.nodes[node2]['money'] > 0:
-        G.nodes[node1]['hours'] -= 1
-        G.nodes[node2]['hours'] += 1
-        G.nodes[node1]['money'] += price
-        G.nodes[node2]['money'] -= price
-        if utility(node1) < utility1 and utility(node2) < utility2:
-            G.nodes[node1]['hours'] += 1
-            G.nodes[node2]['hours'] -= 1
-            G.nodes[node1]['money'] -= price
-            G.nodes[node2]['money'] += price
-    # node 2 sells time to node 1
-    # if G.nodes[node2]['hours'] > 0 and G.nodes[node1]['money'] > 0:
-    #     G.nodes[node2]['hours'] -= 1
-    #     G.nodes[node1]['hours'] += 1
-    #     G.nodes[node2]['money'] += price
-    #     G.nodes[node1]['money'] -= price
-    #     if utility(node1) < utility1 and utility(node2) < utility2:
-    #         G.nodes[node2]['hours'] += 1
-    #         G.nodes[node1]['hours'] -= 1
-    #         G.nodes[node2]['money'] -= price
-    #         G.nodes[node1]['money'] += price
+    # a trade is when a node buys more free time from another node in exchange for money
+    # to start, we assume that the node with more money is the one buying time
 
+    # check which node has more money
+    if G.nodes[node1]['money'] > G.nodes[node2]['money']:
+        # node1 is buying time from node2
+        # check how much time node2 has to sell
+        if G.nodes[node2]['free'] > 0:
+            # node2 has time to sell
+            # check how much money node1 has to buy time
+            if G.nodes[node1]['money'] > price:
+                # do the trade. Then see if both better off. If so, keep it. If not, reverse it.
+                # get starting utility of node1 and node2
+                node1_utility_before_trade = utility(node1)
+                node2_utility_before_trade = utility(node2)
+                # do the trade
+                G.nodes[node1]['free'] = G.nodes[node1]['free'] - 1
+                G.nodes[node1]['work'] = G.nodes[node1]['work'] + 1
+                G.nodes[node1]['money'] = G.nodes[node1]['money'] - price
+                G.nodes[node2]['free'] = G.nodes[node2]['free'] + 1
+                G.nodes[node2]['work'] = G.nodes[node2]['work'] - 1
+                G.nodes[node2]['money'] = G.nodes[node2]['money'] + price
+                
+                # calculate utility of node1 and node2 after trade
+                node1_utility_after_trade = utility(node1)
+                node2_utility_after_trade = utility(node2)
+                # increase the trade counter
+                num_trades += 1
+                # check if the trade will make both nodes better off
+                if not (node1_utility_after_trade > node1_utility_before_trade and node2_utility_after_trade > node2_utility_before_trade):
+                    # reverse the trade
+                    G.nodes[node1]['free'] = G.nodes[node1]['free'] + 1
+                    G.nodes[node1]['work'] = G.nodes[node1]['work'] - 1
+                    G.nodes[node1]['money'] = G.nodes[node1]['money'] + price
+                    G.nodes[node2]['free'] = G.nodes[node2]['free'] - 1
+                    G.nodes[node2]['work'] = G.nodes[node2]['work'] + 1
+                    G.nodes[node2]['money'] = G.nodes[node2]['money'] - price
+    else:
+        # node2 is buying time from node1
+        # check how much time node1 has to sell
+        if G.nodes[node1]['free'] > 0:
+            # node1 has time to sell
+            # check how much money node2 has to buy time
+            if G.nodes[node2]['money'] > price:
+                # do the trade. Then see if both better off. If so, keep it. If not, reverse it.
+                # get starting utility of node1 and node2
+                node1_utility_before_trade = utility(node1)
+                node2_utility_before_trade = utility(node2)
+                # do the trade
+                G.nodes[node1]['free'] = G.nodes[node1]['free'] - 1
+                G.nodes[node1]['work'] = G.nodes[node1]['work'] + 1
+                G.nodes[node1]['money'] = G.nodes[node1]['money'] - price
+                G.nodes[node2]['free'] = G.nodes[node2]['free'] + 1
+                G.nodes[node2]['work'] = G.nodes[node2]['work'] - 1
+                G.nodes[node2]['money'] = G.nodes[node2]['money'] + price
+                
+                # calculate utility of node1 and node2 after trade
+                node1_utility_after_trade = utility(node1)
+                node2_utility_after_trade = utility(node2)
+                num_trades += 1
+                # check if the trade will make both nodes better off
+                if not (node1_utility_after_trade > node1_utility_before_trade and node2_utility_after_trade > node2_utility_before_trade):
+                    # the trade will not make both nodes better off
+                    # reverse the trade
+                    G.nodes[node1]['free'] = G.nodes[node1]['free'] + 1
+                    G.nodes[node1]['work'] = G.nodes[node1]['work'] - 1
+                    G.nodes[node1]['money'] = G.nodes[node1]['money'] + price
+                    G.nodes[node2]['free'] = G.nodes[node2]['free'] - 1
+                    G.nodes[node2]['work'] = G.nodes[node2]['work'] + 1
+                    G.nodes[node2]['money'] = G.nodes[node2]['money'] - price
+    
 # now we define the simulation
 # we run the simulation for 1000 steps
 # at each step, we update the nodes, and then we trade
 # crate a dataframe to store the data
+# we want to make the price dynamic, but start with 1
+price = 1
 data = []
 for i in range(num_iterations):
     update()            
     for j in range(num_nodes):
         for k in G.neighbors(j):
-            trade(j, k, 10)
+            trade(j, k, price,num_trades)
     print(i)
     # save the data for each node to a long dataframe
     for j in range(num_nodes):
-        data.append([i, j, G.nodes[j]['hours'], G.nodes[j]['money'], G.nodes[j]['type'], G.nodes[j]['happiness']])
+        data.append([i, j, G.nodes[j]['hours'], G.nodes[j]['free'], G.nodes[j]['work'], G.nodes[j]['money'], G.nodes[j]['type'], G.nodes[j]['happiness']])
+
+print(num_trades)
 
 # write the data to a csv file
 with open('simulation_data.csv', 'w') as f:
     # add names to the columns
-    fieldnames = ['step', 'id', 'hours', 'money', 'type', 'happiness']
+    fieldnames = ['step', 'id', 'hours','free','work', 'money', 'type', 'happiness']
     df = pd.DataFrame(data)
     df.columns = fieldnames
     df.to_csv(f, header=True, index=False)
