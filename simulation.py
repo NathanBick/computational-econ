@@ -1,17 +1,14 @@
 # here we create a network of automata
 import networkx as nx
-import matplotlib.pyplot as plt
 import random
 import numpy as np  
 import pandas as pd
 
-num_nodes = 100
+num_nodes = 200
 num_iterations = 100
-num_trades = 0
 
 #### NOTES to self
-# no trades are happening, but the money is changing. I would expect an increase due to the production, but there is a drop
-# why arent trades happening?
+# now no transactions are happening ... why?
 
 # create a graph
 G = nx.DiGraph()
@@ -57,6 +54,10 @@ for i in range(num_nodes):
                 if random.random() < 0.01:
                     G.add_edge(i,j)
                     G.add_edge(j,i)
+
+# print the number of edges and number of nodes
+print('Number of nodes: ', G.number_of_nodes())
+print('Number of edges: ', G.number_of_edges())
 
 # now we assign the attributes to the nodes
 # this includes a uniform allocation of 16 hours to each node, and a random amount of money, determined by type
@@ -113,7 +114,7 @@ def update():
 # the max of hours is 16
 # for each combo of ndoes, check if a trade will make both nodes better off - if so, do it
 # price is the price of 1 hour of time in terms of money
-def trade(node1, node2, price,num_trades):
+def trade(node1, node2, price):
     # check utility of node1 and node2 before trade
     node1_utility_before_trade = utility(node1)
     node2_utility_before_trade = utility(node2)
@@ -144,10 +145,23 @@ def trade(node1, node2, price,num_trades):
                 # calculate utility of node1 and node2 after trade
                 node1_utility_after_trade = utility(node1)
                 node2_utility_after_trade = utility(node2)
-                # increase the trade counter
-                num_trades += 1
-                # check if the trade will make both nodes better off
-                if not (node1_utility_after_trade > node1_utility_before_trade and node2_utility_after_trade > node2_utility_before_trade):
+                
+                  # check if the trade will make both nodes better off or if its impossible. 
+                # check utility
+                better_off = node1_utility_after_trade > node1_utility_before_trade and node2_utility_after_trade > node2_utility_before_trade
+
+                # check if time variables are positive and consisten
+                node1_time = G.nodes[node1]['free'] + G.nodes[node1]['work']
+                node2_time = G.nodes[node2]['free'] + G.nodes[node2]['work']
+                time_consistent = node1_time == 16 and node2_time == 16 and G.nodes[node1]['free'] >= 0 and G.nodes[node2]['free'] >= 0 and G.nodes[node1]['work'] >= 0 and G.nodes[node2]['work'] >= 0
+
+                # check if money variables are positive and consistent
+                node1_money = G.nodes[node1]['money']
+                node2_money = G.nodes[node2]['money']
+                money_consistent = node1_money >= 0 and node2_money >= 0
+
+                # check if the trade will make both nodes better off, or if it is infeasible (node1 has no money to buy time or no time to sell)
+                if not better_off or not time_consistent or not money_consistent:
                     # reverse the trade
                     G.nodes[node1]['free'] = G.nodes[node1]['free'] + 1
                     G.nodes[node1]['work'] = G.nodes[node1]['work'] - 1
@@ -155,6 +169,11 @@ def trade(node1, node2, price,num_trades):
                     G.nodes[node2]['free'] = G.nodes[node2]['free'] - 1
                     G.nodes[node2]['work'] = G.nodes[node2]['work'] + 1
                     G.nodes[node2]['money'] = G.nodes[node2]['money'] - price
+
+                    return False
+                
+                else:
+                    return True
     else:
         # node2 is buying time from node1
         # check how much time node1 has to sell
@@ -177,9 +196,23 @@ def trade(node1, node2, price,num_trades):
                 # calculate utility of node1 and node2 after trade
                 node1_utility_after_trade = utility(node1)
                 node2_utility_after_trade = utility(node2)
-                num_trades += 1
-                # check if the trade will make both nodes better off
-                if not (node1_utility_after_trade > node1_utility_before_trade and node2_utility_after_trade > node2_utility_before_trade):
+                
+                # check if the trade will make both nodes better off or if its impossible. 
+                # check utility
+                better_off = node1_utility_after_trade > node1_utility_before_trade and node2_utility_after_trade > node2_utility_before_trade
+
+                # check if time variables are positive and consisten
+                node1_time = G.nodes[node1]['free'] + G.nodes[node1]['work']
+                node2_time = G.nodes[node2]['free'] + G.nodes[node2]['work']
+                time_consistent = node1_time == 16 and node2_time == 16 and G.nodes[node1]['free'] >= 0 and G.nodes[node2]['free'] >= 0 and G.nodes[node1]['work'] >= 0 and G.nodes[node2]['work'] >= 0
+
+                # check if money variables are positive and consistent
+                node1_money = G.nodes[node1]['money']
+                node2_money = G.nodes[node2]['money']
+                money_consistent = node1_money >= 0 and node2_money >= 0
+
+                # check if the trade will make both nodes better off, or if it is infeasible (node1 has no money to buy time or no time to sell)
+                if not better_off or not time_consistent or not money_consistent:
                     # the trade will not make both nodes better off
                     # reverse the trade
                     G.nodes[node1]['free'] = G.nodes[node1]['free'] + 1
@@ -188,25 +221,85 @@ def trade(node1, node2, price,num_trades):
                     G.nodes[node2]['free'] = G.nodes[node2]['free'] - 1
                     G.nodes[node2]['work'] = G.nodes[node2]['work'] + 1
                     G.nodes[node2]['money'] = G.nodes[node2]['money'] - price
-    
+                    
+                    return False
+                else:
+                    return True
+
+# function to determine the price. Go across a range of prices and attempt to trade at each price.
+# once the price is found, return it.
+# this will apply to pairs of nodes.
+# TODO: make this work in both directions, up and down  
+def find_price(node1, node2,price):
+    counter = 0
+    # transaction is a boolean that is true if the trade is successful
+    transaction = False
+    while trade(node1, node2, price) == False:
+        market_price = price
+        price += 0.5
+        counter += 1
+        # if the price gets too far from the starting price, stop
+        if price/market_price > 10:
+            return market_price, transaction
+        
+        # if they can't trade at a pri ce within 100 of the starting price, then they can't trade
+        if counter > 100:
+            return market_price, transaction
+            
+    if trade(node1, node2, price) == True:
+        transaction = True
+
+    return price, transaction
+
 # now we define the simulation
 # we run the simulation for 1000 steps
 # at each step, we update the nodes, and then we trade
 # crate a dataframe to store the data
 # we want to make the price dynamic, but start with 1
-price = 1
+starting_price = 1
+prices = []
 data = []
+transactions = []
 for i in range(num_iterations):
-    update()            
+    print("Starting iteration " + str(i))
+    print("Starting price is " + str(starting_price))
+    # update the nodes
+    update()  
+    # count the transactions in a step
+    transactions_in_step = 0          
     for j in range(num_nodes):
         for k in G.neighbors(j):
-            trade(j, k, price,num_trades)
-    print(i)
+            price, transaction = find_price(j, k, starting_price)
+            prices.append(price)
+            # store price, node1, node2, and step
+            transactions.append([price,transaction, j, k, i])
+            if transaction == True:
+                transactions_in_step += 1
+    print("Number of transactions in step " + str(i) + " is " + str(transactions_in_step))
+    # calculate the average price from this step
+    average_price = sum(prices)/len(prices)
+    # update the price for the next step
+    # keep the older starting price
+    prev_starting_price = starting_price
+    starting_price = average_price
+    # calculate the difference between the two prices
+    price_difference = abs(starting_price - prev_starting_price)
+    
     # save the data for each node to a long dataframe
     for j in range(num_nodes):
         data.append([i, j, G.nodes[j]['hours'], G.nodes[j]['free'], G.nodes[j]['work'], G.nodes[j]['money'], G.nodes[j]['type'], G.nodes[j]['happiness']])
 
-print(num_trades)
+    # if the price difference is less than a threshold, then we have reached equilibrium and we can stop the simulation
+    if transactions_in_step == 0:
+        print("Equilibrium reached at step " + str(i))
+        break
+    
+# write the transactions to a csv file
+with open('transactions.csv', 'w') as f:
+    names = ['price', "transaction",'node1', 'node2', 'step']
+    df = pd.DataFrame(transactions)
+    df.columns = names
+    df.to_csv(f, header=True, index=False)
 
 # write the data to a csv file
 with open('simulation_data.csv', 'w') as f:
