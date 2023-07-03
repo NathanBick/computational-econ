@@ -6,6 +6,7 @@ mpt-1b-redpajama-200b-dolly_triton/
 share/
 cud*.deb*
 pyenv.cfg
+.DS_Store
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

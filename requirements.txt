@@ -1,6 +1,12 @@
+packaging
 transformers
 torch
 torchvision
 einops
-flash_attn
-triton
+#flash_attn
+#triton
+networkx
+matplotlib
+pandas
+plotly
+scipy
