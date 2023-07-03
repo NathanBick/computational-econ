@@ -4,7 +4,7 @@ import random
 import numpy as np  
 import pandas as pd
 
-num_nodes = 200
+num_nodes = 100
 num_iterations = 100
 
 #### NOTES to self
@@ -96,11 +96,11 @@ for i in range(num_nodes):
 # now we define the production and utility functions
 # for now we do not include the neighbors' information in the calculation
 def production(node):
-    return G.nodes[node]['beta1'] * G.nodes[node]['work'] + G.nodes[node]['beta2'] * G.nodes[node]['money'] + G.nodes[node]['beta0']
+    return G.nodes[node]['beta1'] * G.nodes[node]['work'] * G.nodes[node]['free'] + G.nodes[node]['beta2'] * G.nodes[node]['money'] + G.nodes[node]['beta0']
     #return G.nodes[node]['beta1'] * G.nodes[node]['hours'] + G.nodes[node]['beta2'] * G.nodes[node]['money'] + G.nodes[node]['beta3'] * sum([G.nodes[i]['money'] for i in G.neighbors(node)]) + G.nodes[node]['beta0']
 
 def utility(node):
-    return G.nodes[node]['alpha1'] * G.nodes[node]['free'] + G.nodes[node]['alpha2'] * G.nodes[node]['money'] + G.nodes[node]['alpha0']
+    return G.nodes[node]['alpha1'] * G.nodes[node]['free'] - G.nodes[node]['alpha1'] * G.nodes[node]['work'] + G.nodes[node]['alpha2'] * G.nodes[node]['money'] + G.nodes[node]['alpha0']
     #return G.nodes[node]['alpha1'] * G.nodes[node]['hours'] + G.nodes[node]['alpha2'] * G.nodes[node]['money'] + G.nodes[node]['alpha3'] * sum([G.nodes[i]['money'] for i in G.neighbors(node)]) + G.nodes[node]['alpha0']
 
 # now we define the update function across the nodes
@@ -233,30 +233,27 @@ def trade(node1, node2, price):
 def find_price(node1, node2,price):
     counter = 0
     # transaction is a boolean that is true if the trade is successful
-    transaction = False
     while trade(node1, node2, price) == False:
         market_price = price
         price += 0.5
         counter += 1
         # if the price gets too far from the starting price, stop
         if price/market_price > 10:
-            return market_price, transaction
+            return market_price, False
         
-        # if they can't trade at a pri ce within 100 of the starting price, then they can't trade
+        # if they can't trade at a price within 100 of the starting price, then they can't trade
         if counter > 100:
-            return market_price, transaction
+            return market_price, False
             
-    if trade(node1, node2, price) == True:
-        transaction = True
-
-    return price, transaction
+    return price, True
 
 # now we define the simulation
 # we run the simulation for 1000 steps
 # at each step, we update the nodes, and then we trade
 # crate a dataframe to store the data
 # we want to make the price dynamic, but start with 1
-starting_price = 1
+# we want to make sure that we dont rerun the same pairs of nodes again in a turn, since our trade checks both directions of trade
+starting_price = 100
 prices = []
 data = []
 transactions = []
@@ -269,6 +266,12 @@ for i in range(num_iterations):
     transactions_in_step = 0          
     for j in range(num_nodes):
         for k in G.neighbors(j):
+            # subset transaction to only include j,k,i
+            subset_transactions = [x[2:5] for x in transactions]
+            # check if we have already traded in this step using the j,k, and i values
+            if [j,k,i] in subset_transactions or [k,j,i] in subset_transactions:
+                continue
+            
             price, transaction = find_price(j, k, starting_price)
             prices.append(price)
             # store price, node1, node2, and step
@@ -284,13 +287,14 @@ for i in range(num_iterations):
     starting_price = average_price
     # calculate the difference between the two prices
     price_difference = abs(starting_price - prev_starting_price)
+    print("Price difference is " + str(price_difference))
     
     # save the data for each node to a long dataframe
     for j in range(num_nodes):
         data.append([i, j, G.nodes[j]['hours'], G.nodes[j]['free'], G.nodes[j]['work'], G.nodes[j]['money'], G.nodes[j]['type'], G.nodes[j]['happiness']])
 
     # if the price difference is less than a threshold, then we have reached equilibrium and we can stop the simulation
-    if transactions_in_step == 0:
+    if transactions_in_step == 0 or price_difference < 0.5:
         print("Equilibrium reached at step " + str(i))
         break
     
